@@ -3,7 +3,7 @@
 Dashboard `index.html`: **top ofensores de _Excede la capacidad_** entre os Facility Nodos
 da carteira que **não operam aos sábados** (coluna `SÁBADO = "-"` na Carteira), com base em 2026.
 
-Abra `index.html` no navegador (funciona offline; os dados ficam em `dados.js`).
+Abra `index.html` no navegador (arquivo único, funciona offline; os dados ficam embutidos nele).
 
 ## Atualizar os dados
 

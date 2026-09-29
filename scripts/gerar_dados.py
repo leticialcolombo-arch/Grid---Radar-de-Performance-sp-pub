@@ -1,4 +1,4 @@
-"""Gera dados.js para o dashboard de top ofensores (Excede la capacidad).
+"""Atualiza os dados embutidos no index.html do dashboard de top ofensores (Excede la capacidad).
 
 Uso:
     python3 scripts/gerar_dados.py <general.xlsx> <Carteira.xlsx> [ano]
@@ -13,6 +13,7 @@ Regras:
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -86,14 +87,19 @@ def main():
             for _, r in alvo.sort_values(["Facility Nodo", "data"]).iterrows()
         ],
     }
-    saida = Path(__file__).resolve().parent.parent / "dados.js"
-    saida.write_text(
-        "// Gerado por scripts/gerar_dados.py - não editar à mão.\n"
-        "window.DADOS = " + json.dumps(dados, ensure_ascii=False) + ";\n",
-        encoding="utf-8",
+    # Os dados ficam embutidos no próprio HTML para a página abrir sozinha.
+    saida = Path(__file__).resolve().parent.parent / "index.html"
+    bloco = (
+        '<script id="dados">/* Gerado por scripts/gerar_dados.py - não editar à mão. */\n'
+        "window.DADOS = " + json.dumps(dados, ensure_ascii=False) + ";\n</script>"
     )
+    html, n = re.subn(
+        r'<script id="dados">.*?</script>', lambda _: bloco, saida.read_text(encoding="utf-8"), flags=re.S
+    )
+    if n != 1:
+        sys.exit('index.html sem o bloco <script id="dados">')
+    saida.write_text(html, encoding="utf-8")
     print(f"{saida}: {len(ofensores)} nodos, {len(dados['diario'])} dias")
-
 
 if __name__ == "__main__":
     main()
