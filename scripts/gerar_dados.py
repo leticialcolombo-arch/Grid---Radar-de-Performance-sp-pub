@@ -1,4 +1,4 @@
-"""Atualiza os dados embutidos no index.html do dashboard de top ofensores (Excede la capacidad).
+"""Atualiza os dados embutidos no index.html do dashboard "Nodos com descarte".
 
 Uso:
     python3 scripts/gerar_dados.py <general.xlsx> <Carteira.xlsx> [ano]
@@ -9,7 +9,12 @@ Regras:
   ignorado por não ter data.
 - Carteira.xlsx: um nodo "não opera aos sábados" quando a coluna SÁBADO é "-".
   A coluna FACILITY pode trazer mais de um código ("BRDSP049 - BRNSP49").
-- Só entram nodos da Carteira sem sábado e com Excede la capacidad > 0 no ano.
+- "Seg a sex, sem fim de semana": SÁBADO "-" e o texto do horário não cita
+  sábado nem domingo.
+- "Alto volume": média diária de Volumen Total (descarte) >= mediana da média
+  diária de todos os nodos da base no ano.
+- Entram os nodos da Carteira sem sábado que tenham Excede la capacidad > 0
+  OU que sejam seg a sex, sem fim de semana, com alto volume.
 """
 
 import json
@@ -61,8 +66,23 @@ def main():
         .agg(exc=(EXCEDE, "sum"), vol=("Volumen Total", "sum"))
         .reset_index()
     )
-    total_exc = diario.groupby("Facility Nodo")["exc"].sum()
-    ofensores = [f for f in sem_sabado if total_exc.get(f, 0) > 0]
+    por_nodo = diario.groupby("Facility Nodo").agg(
+        exc=("exc", "sum"), vol=("vol", "sum"), dias=("data", "nunique")
+    )
+    por_nodo["media_dia"] = por_nodo["vol"] / por_nodo["dias"]
+    mediana_dia = float(por_nodo["media_dia"].median())
+
+    for info in sem_sabado.values():
+        info["segSex"] = not re.search(r"s[áa]bado|domingo", info["horario"], re.I)
+
+    def entra(f):
+        if f not in por_nodo.index:
+            return False
+        n = por_nodo.loc[f]
+        alto = n["media_dia"] >= mediana_dia
+        return n["exc"] > 0 or (sem_sabado[f]["segSex"] and alto)
+
+    ofensores = [f for f in sem_sabado if entra(f)]
 
     alvo = diario[diario["Facility Nodo"].isin(ofensores)]
     dados = {
@@ -71,6 +91,11 @@ def main():
             base["data"].min().strftime("%Y-%m-%d"),
             base["data"].max().strftime("%Y-%m-%d"),
         ],
+        "medianaVolumeDia": round(mediana_dia, 1),
+        "volumeBasePorMes": {
+            str(mes): int(v)
+            for mes, v in diario.groupby(diario["data"].dt.month)["vol"].sum().items()
+        },
         "excedeBasePorMes": {
             str(mes): int(v)
             for mes, v in diario.groupby(diario["data"].dt.month)["exc"].sum().items()
@@ -79,6 +104,7 @@ def main():
             f: {
                 **sem_sabado[f],
                 "tipo": alvo.loc[alvo["Facility Nodo"] == f, "Tipo de Nodo"].iloc[0],
+                "altoVolume": bool(por_nodo.loc[f, "media_dia"] >= mediana_dia),
             }
             for f in ofensores
         },
